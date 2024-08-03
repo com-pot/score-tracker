@@ -173,7 +173,7 @@
         {/each}
 
         {#each $visibleRounds as round}
-            <div class="head" data-name="round-num" data-round={round}>{round}</div>
+            <div data-name="round-num" data-round={round}>{round}</div>
             {#each $gameData.players as player}
                 <div class={[
                     "round-points",
@@ -257,7 +257,7 @@
         row-gap: 1rem;
         column-gap: 0.25rem;
 
-        .head {
+        .head, [data-name="round-num"] {
             font-weight: bold;
         }
         .head[data-name="player"] {
@@ -268,6 +268,18 @@
         .foot[data-name="player"] {
             place-self: center;
             font-size: 1.5rem;
+        }
+
+        .head {
+            position: sticky;
+            top: 0;
+            padding: 0.25em 0.2em;
+            
+            // Keep same as `body {` background
+            background-attachment: fixed;
+            background-color: var(--color-bg-1);
+            background-size: 100vw 100vh;
+            background-image: radial-gradient(50% 50% at 50% 50%, rgba(255, 255, 255, 0.75) 0%, rgba(255, 255, 255, 0) 100%), linear-gradient(180deg, var(--color-bg-0) 0%, var(--color-bg-1) 15%, var(--color-bg-2) 50%);
         }
 
         .round-points {
