@@ -4,6 +4,7 @@
     import AttemptsIndicator from "$lib/components/AttemptsIndicator.svelte";
     import { useActiveRound, useGame } from "$lib/score/trackingStore";
     import { defaultGameStorage } from "$lib/games";
+    import { goto } from "$app/navigation";
 
     /** @type {import('./$types').PageData} */
     export let data;
@@ -110,7 +111,7 @@
                 url.searchParams.set("player", player)
             }
 
-            window.history.replaceState(null, "", url)
+            goto(url, {replaceState: true})
     }
 
     /** @type {import('svelte/store').Unsubscriber[]}*/
