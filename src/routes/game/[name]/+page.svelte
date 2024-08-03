@@ -114,7 +114,7 @@
                 url.searchParams.set("player", player)
             }
 
-            goto(url, {replaceState: true})
+            goto(url, {replaceState: true, noScroll: true})
     }
 
     /** @type {import('svelte/store').Unsubscriber[]}*/
@@ -199,51 +199,53 @@
         {/each}
     </div>
     
-    <div class="card">
-
-        <div class="card-body round-controls">
-            {#if $activeRound.player}
-            
-            <div class="flow-row -center">
-                <div class="badge-value" data-name="round">
-                    <div class="caption">Kolo</div>
-                    <div class="value">{$activeRound.round}</div>
+    <div class="grid-stack round-controls">
+        <div class="card round-active" aria-current="{$activeRound.round ? 'step' : 'false'}">
+            <div class="card-body">
+                <div class="flow-row -center">
+                    <div class="badge-value" data-name="round">
+                        <div class="caption">Kolo</div>
+                        <div class="value">{$activeRound.round}</div>
+                    </div>
+                    <div class="badge-value" data-name="player">
+                        <div class="caption">Hráč</div>
+                        <div class="value">{$activeRound.player}</div>
+                    </div>
                 </div>
-                <div class="badge-value" data-name="player">
-                    <div class="caption">Hráč</div>
-                    <div class="value">{$activeRound.player}</div>
+
+                <div class="attempt">
+                    <AttemptsIndicator attemptPoints={$activeRound.attempts} highlight={$attempt}/>
+                    <div class="options">
+                        {#each game.rules.options as opt}
+                        <button class="btn btn-outline-primary"
+                            on:click={() => attemptCtrl.mark(opt.value) }
+                            disabled={$roundComplete || !$activeRound.player}
+                        >{opt.label || opt.value}</button>
+                        {/each}
+                        <button class="btn -icon btn-outline-info" on:click={redoAttempt} disabled={!$activeRound.player || $attempt < 1}>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" d="M22 3H7c-.69 0-1.23.35-1.59.88L0 12l5.41 8.11c.36.53.9.89 1.59.89h15a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2m-3 12.59L17.59 17L14 13.41L10.41 17L9 15.59L12.59 12L9 8.41L10.41 7L14 10.59L17.59 7L19 8.41L15.41 12"/></svg>
+                            <span class="line"></span>
+                        </button>
+                    </div>
+                </div>
+
+                <hr>
+                
+                <div class="flow-row -center">
+                    <button class="btn btn-outline-secondary" on:click={clearSelection} disabled={!$activeRound.player}>Storno</button>
+                    <button class="btn btn-outline-primary" on:click={confirmAttempt} disabled={!$roundComplete}>Potvrdit</button>
+                    <button class="btn btn-outline-info" on:click={redoRound} disabled={!$activeRound.player || $attempt < 1}>Opravit kolo</button>
                 </div>
             </div>
+        </div>
 
-            <div class="attempt">
-                <AttemptsIndicator attemptPoints={$activeRound.attempts} highlight={$attempt}/>
-                <div class="options">
-                    {#each game.rules.options as opt}
-                    <button class="btn btn-outline-primary"
-                        on:click={() => attemptCtrl.mark(opt.value) }
-                        disabled={$roundComplete || !$activeRound.player}
-                    >{opt.label || opt.value}</button>
-                    {/each}
-                    <button class="btn -icon btn-outline-info" on:click={redoAttempt} disabled={!$activeRound.player || $attempt < 1}>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" d="M22 3H7c-.69 0-1.23.35-1.59.88L0 12l5.41 8.11c.36.53.9.89 1.59.89h15a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2m-3 12.59L17.59 17L14 13.41L10.41 17L9 15.59L12.59 12L9 8.41L10.41 7L14 10.59L17.59 7L19 8.41L15.41 12"/></svg>
-                        <span class="line"></span>
-                    </button>
+        <div class="card round-inactive" aria-current="{!$activeRound.round ? 'step' : 'false'}">
+            <div class="card-body">
+                <div class="buttons">
+                    <button on:click={proceedRound} class="btn btn-outline-secondary">Další kolo</button>
+                    <a href="/game/{data.game.name}/results" class="btn btn-link">Výsledky</a>
                 </div>
             </div>
-
-            <hr>
-            
-            <div class="flow-row -center">
-                <button class="btn btn-outline-secondary" on:click={clearSelection} disabled={!$activeRound.player}>Storno</button>
-                <button class="btn btn-outline-primary" on:click={confirmAttempt} disabled={!$roundComplete}>Potvrdit</button>
-                <button class="btn btn-outline-info" on:click={redoRound} disabled={!$activeRound.player || $attempt < 1}>Opravit kolo</button>
-            </div>
-            {:else}
-            <div class="buttons">
-                <button on:click={proceedRound} class="btn btn-outline-secondary">Další kolo</button>
-                <a href="/game/{data.game.name}/results" class="btn btn-link">Výsledky</a>
-            </div>
-            {/if}
         </div>
     </div>
 </section>
@@ -309,13 +311,15 @@
         :global(.attempt-indicator) {
             font-size: 2rem;
         }
+    }
 
-        [role="separator"] {
-            width: 0.25em;
-            height: 1em;
-            border-radius: 20em;
-            background-color: var(--bs-gray);
-        }
+    > .card {
+        transition: opacity 0.15s ease-in-out;
+        place-self: start stretch;
+    }
+    > [aria-current="false"] {
+        opacity: 0;
+        pointer-events: none;
     }
 }
 </style>

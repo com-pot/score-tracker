@@ -8,3 +8,11 @@
         justify-content: center;
     }
 }
+
+.grid-stack {
+    display: grid;
+    
+    > * {
+        grid-area: 1 / 1;
+    }
+}
