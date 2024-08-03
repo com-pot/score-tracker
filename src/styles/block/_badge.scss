@@ -1,0 +1,16 @@
+.badge-value {
+    .caption {
+        background-color: var(--bs-blue);
+        color: var(--bs-body-bg);
+    }
+    .value {
+        border: 1px solid var(--bs-blue);
+        flex: 1;
+    }
+
+    :is(.caption, .value) {
+        padding: 0.2em 0.5em;
+    }
+
+    display: flex;
+}

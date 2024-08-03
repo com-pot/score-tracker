@@ -40,7 +40,7 @@
 
     const activeRound = useActiveRound(game.rules);
     function select(/**@type {string}*/ player, /**@type {number}*/ round) {
-        if ($activeRound.player) {
+        if ($activeRound.player && $attempt) {
             console.warn("active score already selected");
             return
         }
@@ -75,6 +75,7 @@
     }
     function redoAttempt() {
         attempt.update((num) => Math.max(0, num - 1))
+        $activeRound.attempts[$attempt] = null
     }
     function redoRound() {
         attempt.set(0)
@@ -92,6 +93,8 @@
         }
     );
     function addPlayer() {
+        if (!$newPlayerNameAvailable) return;
+
         const name = get(newPlayerName);
         game.addPlayer({ name });
         newPlayerName.set("")
@@ -146,28 +149,26 @@
 
 <section>
     <h1>Hra: {data.game.name}</h1>
-    <div class="players">
+    <form class="players" on:submit|preventDefault={addPlayer}>
         <span>Přidat hráče</span>
         <div class="input-group mb-3">
             <input class="form-control" name="newPlayerName"
                 type="text"
                 bind:value={$newPlayerName}
             >
-            <button class="btn btn-outline-secondary"
-                on:click={addPlayer}
+            <button class="btn btn-outline-primary"
                 disabled="{!$newPlayerNameAvailable}"
             >+</button>
         </div>
-    </div>
+    </form>
 
     <hr />
 
     <div class="scores" style={`--players: ${$gameData.players.length};`}>
         <div class="head" data-name="round-num">Kolo</div>
         {#each Object.entries($playerScores) as [player, { points }]}
-            <div class="head">
+            <div class="head" data-name="player">
                 <span data-name="name">{player}</span>
-                <span data-name="total-points">{points.total}</span>
             </div>
         {/each}
 
@@ -188,48 +189,62 @@
                 </div>
             {/each}
         {/each}
+
+        <div class="head foot">Celkem</div>
+
+        {#each Object.entries($playerScores) as [player, { points }]}
+            <div class="foot" data-name="player">
+                <span data-name="total-points">{points.total}</span>
+            </div>
+        {/each}
     </div>
     
-    <div class="round-controls">
-        {#if $activeRound.player}
-        <div>
-            <div class="flow-row">
-                <div class="badge-value">
+    <div class="card">
+
+        <div class="card-body round-controls">
+            {#if $activeRound.player}
+            
+            <div class="flow-row -center">
+                <div class="badge-value" data-name="round">
                     <div class="caption">Kolo</div>
                     <div class="value">{$activeRound.round}</div>
                 </div>
-                <div class="badge-value">
+                <div class="badge-value" data-name="player">
                     <div class="caption">Hráč</div>
                     <div class="value">{$activeRound.player}</div>
                 </div>
             </div>
 
-            <div class="row">
-                <div class="col-auto">
-                    <AttemptsIndicator attemptPoints={$activeRound.attempts} highlight={$attempt}/>
-                </div>
-                <div class="col-auto options">
+            <div class="attempt">
+                <AttemptsIndicator attemptPoints={$activeRound.attempts} highlight={$attempt}/>
+                <div class="options">
                     {#each game.rules.options as opt}
                     <button class="btn btn-outline-primary"
                         on:click={() => attemptCtrl.mark(opt.value) }
                         disabled={$roundComplete || !$activeRound.player}
                     >{opt.label || opt.value}</button>
                     {/each}
+                    <button class="btn -icon btn-outline-info" on:click={redoAttempt} disabled={!$activeRound.player || $attempt < 1}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" d="M22 3H7c-.69 0-1.23.35-1.59.88L0 12l5.41 8.11c.36.53.9.89 1.59.89h15a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2m-3 12.59L17.59 17L14 13.41L10.41 17L9 15.59L12.59 12L9 8.41L10.41 7L14 10.59L17.59 7L19 8.41L15.41 12"/></svg>
+                        <span class="line"></span>
+                    </button>
                 </div>
             </div>
+
+            <hr>
+            
+            <div class="flow-row -center">
+                <button class="btn btn-outline-secondary" on:click={clearSelection} disabled={!$activeRound.player}>Storno</button>
+                <button class="btn btn-outline-primary" on:click={confirmAttempt} disabled={!$roundComplete}>Potvrdit</button>
+                <button class="btn btn-outline-info" on:click={redoRound} disabled={!$activeRound.player || $attempt < 1}>Opravit kolo</button>
+            </div>
+            {:else}
+            <div class="buttons">
+                <button on:click={proceedRound} class="btn btn-outline-secondary">Další kolo</button>
+                <a href="/game/{data.game.name}/results" class="btn btn-link">Výsledky</a>
+            </div>
+            {/if}
         </div>
-        
-        <div class="buttons">
-            <button class="btn btn-outline-secondary" on:click={clearSelection} disabled={!$activeRound.player}>Storno</button>
-            <button class="btn btn-outline-primary" on:click={confirmAttempt} disabled={!$roundComplete}>Potvrdit</button>
-            <button class="btn btn-outline-info" on:click={redoAttempt} disabled={!$activeRound.player || $attempt < 1}>Opravit pokus</button>
-            <button class="btn btn-outline-info" on:click={redoRound} disabled={!$activeRound.player || $attempt < 1}>Opravit kolo</button>
-        </div>
-        {:else}
-        <div class="buttons">
-            <button on:click={proceedRound} class="btn btn-outline-secondary">Další kolo</button>
-        </div>
-        {/if}
     </div>
 </section>
 
@@ -239,6 +254,19 @@
         grid-template-columns: 6ch repeat(var(--players), minmax(0, 1fr));
         row-gap: 1rem;
         column-gap: 0.25rem;
+
+        .head {
+            font-weight: bold;
+        }
+        .head[data-name="player"] {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .foot[data-name="player"] {
+            place-self: center;
+            font-size: 1.5rem;
+        }
 
         .round-points {
             display: grid;
@@ -250,4 +278,44 @@
             background-color: lightgray;
         }
     }
+
+.round-controls {
+
+    .flow-row {
+        max-width: 50ch;
+        margin: 0 auto;
+    }
+    .badge-value[data-name="round"] {
+        flex: 1;
+        min-width: min(12ch, 100%);
+        .value {
+            text-align: center;
+        }
+    }
+    .badge-value[data-name="player"] {
+        flex: 4;
+        min-width: min(25ch, 100%);
+    }
+
+    .attempt {
+        margin-block-start: 2rem;
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 1rem;
+
+        :global(.attempt-indicator) {
+            font-size: 2rem;
+        }
+
+        [role="separator"] {
+            width: 0.25em;
+            height: 1em;
+            border-radius: 20em;
+            background-color: var(--bs-gray);
+        }
+    }
+}
 </style>

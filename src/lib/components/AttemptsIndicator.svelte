@@ -9,7 +9,7 @@
 
 </script>
 
-<div class="attempts">
+<div class="attempt-indicator">
     <ul>
         {#each attemptPoints as attempt, i}
         {#if attempt === null}
@@ -25,7 +25,7 @@
 </div>
 
 <style lang="scss">
-    .attempts {
+    .attempt-indicator {
         --marker-size: 0.5em;
         display: grid;
         place-items: center;

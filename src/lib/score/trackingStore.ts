@@ -66,6 +66,12 @@ type GameRules = {
     options: { value: number, label?: string }[],
 }
 
+type PlayerStanding = {
+    player: Player["name"],
+    points: number,
+    position: number,
+}
+
 const defaultRules = {
     attempts: 5,
     options: [{ value: 1 }, { value: 0 }],
@@ -101,6 +107,42 @@ export function useGame(gameName: string, storage: ReturnType<typeof createGameS
         return Object.fromEntries(entries)
     })
 
+    const playerStandings = derived([playerScores], ([scores]): PlayerStanding[] => {
+        const standings = Object.entries(scores)
+            .map(([playerName, score]) => ({player: playerName, points: score.points.total, position: 0}))
+            .sort((a, b) => -(a.points - b.points))
+
+        let lastPoints = -1
+        let lastPosition = 0
+        for (let i = 0; i < standings.length; i++) {
+            const standing = standings[i]
+            if (standing.points === lastPoints) {
+                standing.position = lastPosition
+                continue
+            }
+            lastPoints = standing.points
+            standing.position = lastPosition = lastPosition + 1
+        }
+
+        return standings
+    })
+
+    const standingPedestals = derived([playerStandings], ([standings]) => {
+        const byPosition: Record<string, {points: number, position: number, standings: PlayerStanding[]}> = {}
+        standings.forEach((standing) => {
+            if (!byPosition[standing.position]) {
+                byPosition[standing.position] = {
+                    points: standing.points,
+                    position: standing.position,
+                    standings: []
+                }
+            }
+            byPosition[standing.position].standings.push(standing)
+        })
+
+        return Object.values(byPosition)
+    })
+
     try {
         gameData.set(storage.load(gameName))
     } catch {
@@ -118,6 +160,8 @@ export function useGame(gameName: string, storage: ReturnType<typeof createGameS
         currentRound,
         targetRound,
         playerScores,
+        playerStandings,
+        standingPedestals,
 
         addPlayer(player: Player) {
             gameData.update((data) => {
