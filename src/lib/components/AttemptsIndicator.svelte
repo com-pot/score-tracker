@@ -67,9 +67,9 @@
                 }
 
                 &.highlight {
-                    outline-color: hotpink;
-                    outline-style: dashed;
-                    outline-width: 4px;
+                    outline-color: var(--bs-blue);
+                    outline-style: solid;
+                    outline-width: 3px;
                     outline-offset: 0px;
 
                     animation: outline-breathe 0.75s infinite alternate ease-in;
