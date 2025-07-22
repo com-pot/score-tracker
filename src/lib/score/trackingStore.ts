@@ -10,7 +10,7 @@ export function createTrackingStore(key: string) {
     return {
         games,
 
-        addGame(name: string) {
+        async addGame(name: string) {
             if (get(games).find((game) => game.name === name)) {
                 return false
             }

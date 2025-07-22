@@ -1,13 +1,17 @@
-<script>
+<script lang="ts">
     import { onDestroy, onMount } from "svelte";
     import { derived, get, writable } from "svelte/store";
     import AttemptsIndicator from "$lib/components/AttemptsIndicator.svelte";
     import { useActiveRound, useGame } from "$lib/score/trackingStore";
     import { defaultGameStorage } from "$lib/games";
     import { goto } from "$app/navigation";
+    import Dialog from "$lib/components/Dialog.svelte";
 
-    /** @type {import('./$types').PageData} */
-    export let data;
+    const  {
+        data
+    }: {
+        data: import('./$types').PageData,
+    } = $props();
 
     const game = useGame(data.game.name, defaultGameStorage);
     const gameData = game.gameData;
@@ -25,7 +29,7 @@
     const attempt = writable(0)
     const roundComplete = derived([attempt], ([attempt]) => attempt >= game.rules.attempts)
     const attemptCtrl = {
-        mark(/**@type {number}*/points) {
+        mark(points: number) {
             if (!$activeRound.player) {
                 console.warn("No active round");
                 return
@@ -38,8 +42,9 @@
         }
     }
 
+    let dialog = $state<ReturnType<typeof Dialog>|null>(null)
     const activeRound = useActiveRound(game.rules);
-    function select(/**@type {string}*/ player, /**@type {number}*/ round) {
+    function select(player: string, round: number) {
         if ($activeRound.player && $attempt) {
             console.warn("active score already selected");
             return
@@ -58,30 +63,28 @@
         let setAttempts = score.attempts.findLastIndex((points) => points !== null) + 1
         
         attempt.set(setAttempts)
+        console.log(dialog)
+        dialog?.ctrl.open()
+            .then((result) => {
+                console.log("dialog done", result)
+                game.putScoreObj(result as any)
+            })
+            .finally(() => {
+                clearSelection()
+            })
     }
     function clearSelection() {
         activeRound.reset()
         attempt.set(0)
+        dialog?.ctrl.isOpen && dialog?.ctrl.close("clearSelection")
     }
-    clearSelection()
 
-    function confirmAttempt() {
-        if (!$activeRound) {
-            console.warn("No active round");
-            return
-        }
-        game.putScoreObj($activeRound)
-        clearSelection()
-    }
     function redoAttempt() {
         attempt.update((num) => Math.max(0, num - 1))
         $activeRound.attempts[$attempt] = null
     }
     function redoRound() {
         attempt.set(0)
-    }
-    function proceedRound() {
-        game.proceedRound()
     }
 
     let newPlayerName = writable("");
@@ -100,11 +103,7 @@
         newPlayerName.set("")
     }
 
-    /**
-     * @param {string} player
-     * @param {number} round
-     */
-    function storeRoundInfoToUrl(player, round) {
+    function storeRoundInfoToUrl(player: string, round: number) {
         const url = new URL(window.location.toString())
             if (!round) {
                 url.searchParams.delete("round")
@@ -117,8 +116,7 @@
             goto(url, {replaceState: true, noScroll: true})
     }
 
-    /** @type {import('svelte/store').Unsubscriber[]}*/
-    const unsubscribers = []
+    const unsubscribers: import('svelte/store').Unsubscriber[] = []
     onMount(() => {
         const loc = new URL(window.location.toString())
         const playerName = loc.searchParams.get("player")
@@ -142,14 +140,18 @@
             }
             storeRoundInfoToUrl(round.player, round.round)
         }))
-        
+        clearSelection()
     });
     onDestroy(() => unsubscribers.forEach((unsubscribe) => unsubscribe()))
+
 </script>
 
 <section>
     <h1>Hra: {data.game.name}</h1>
-    <form class="players" on:submit|preventDefault={addPlayer}>
+    <div class="subtitle">
+        <a href="/game/{data.game.name}/results" class="btn btn-link">Výsledky</a>
+    </div>
+    <form class="players" onsubmit={(e) => (e.preventDefault(), addPlayer())}>
         <span>Přidat hráče</span>
         <div class="input-group mb-3">
             <input class="form-control" name="newPlayerName"
@@ -182,13 +184,16 @@
                     ].join(' ')}
                     data-round={round} data-player={player.name}
                     role="button" tabindex={-1}
-                    on:click={() => select(player.name, round)}
-                    on:keydown={(e) => e.key === 'Enter' && select(player.name, round)}
+                    onclick={() => select(player.name, round)}
+                    onkeydown={(e) => e.key === 'Enter' && select(player.name, round)}
                 >
                     <AttemptsIndicator attemptPoints={$playerScores[player.name]?.points.roundPoints[round - 1]}/>
                 </div>
             {/each}
         {/each}
+        <div class="head foot actions">
+            <button onclick={() => game.proceedRound()} class="btn btn-outline-secondary">Další kolo</button>
+        </div>
 
         <div class="head foot">Celkem</div>
 
@@ -200,55 +205,56 @@
     </div>
     
     <div class="grid-stack round-controls">
-        <div class="card round-active" aria-current="{$activeRound.round ? 'step' : 'false'}">
-            <div class="card-body">
-                <div class="flow-row -center">
-                    <div class="badge-value" data-name="round">
-                        <div class="caption">Kolo</div>
-                        <div class="value">{$activeRound.round}</div>
-                    </div>
-                    <div class="badge-value" data-name="player">
-                        <div class="caption">Hráč</div>
-                        <div class="value">{$activeRound.player}</div>
-                    </div>
-                </div>
-
-                <div class="attempt">
-                    <AttemptsIndicator attemptPoints={$activeRound.attempts} highlight={$attempt}/>
-                    <div class="options">
-                        {#each game.rules.options as opt}
-                        <button class="btn btn-outline-primary"
-                            on:click={() => attemptCtrl.mark(opt.value) }
-                            disabled={$roundComplete || !$activeRound.player}
-                        >{opt.label || opt.value}</button>
-                        {/each}
-                        <button class="btn -icon btn-outline-info" on:click={redoAttempt} disabled={!$activeRound.player || $attempt < 1}>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" d="M22 3H7c-.69 0-1.23.35-1.59.88L0 12l5.41 8.11c.36.53.9.89 1.59.89h15a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2m-3 12.59L17.59 17L14 13.41L10.41 17L9 15.59L12.59 12L9 8.41L10.41 7L14 10.59L17.59 7L19 8.41L15.41 12"/></svg>
-                            <span class="line"></span>
-                        </button>
-                    </div>
-                </div>
-
-                <hr>
-                
-                <div class="flow-row -center">
-                    <button class="btn btn-outline-secondary" on:click={clearSelection} disabled={!$activeRound.player}>Storno</button>
-                    <button class="btn btn-outline-primary" on:click={confirmAttempt} disabled={!$roundComplete}>Potvrdit</button>
-                    <button class="btn btn-outline-info" on:click={redoRound} disabled={!$activeRound.player || $attempt < 1}>Opravit kolo</button>
-                </div>
-            </div>
-        </div>
-
         <div class="card round-inactive" aria-current="{!$activeRound.round ? 'step' : 'false'}">
-            <div class="card-body">
-                <div class="buttons">
-                    <button on:click={proceedRound} class="btn btn-outline-secondary">Další kolo</button>
-                    <a href="/game/{data.game.name}/results" class="btn btn-link">Výsledky</a>
-                </div>
-            </div>
         </div>
     </div>
 </section>
+
+<Dialog bind:this={dialog} controls={false}>
+    {#snippet children(ctrl)}
+    <div class="card round-active round-controls">
+        <div class="card-body">
+            <div class="flow-row -center">
+                <div class="badge-value" data-name="round">
+                    <div class="caption">Kolo</div>
+                    <div class="value">{$activeRound.round}</div>
+                </div>
+                <div class="badge-value" data-name="player">
+                    <div class="caption">Hráč</div>
+                    <div class="value">{$activeRound.player}</div>
+                </div>
+            </div>
+
+            <div class="attempt">
+                <AttemptsIndicator attemptPoints={$activeRound.attempts} highlight={$attempt}/>
+                <div class="options">
+                    {#each game.rules.options as opt}
+                    <button class="btn btn-outline-primary"
+                        onclick={() => attemptCtrl.mark(opt.value) }
+                        disabled={$roundComplete || !$activeRound.player}
+                    >{opt.label || opt.value}</button>
+                    {/each}
+                    <button class="btn -icon btn-outline-info" aria-label="Opravit"
+                        disabled={!$activeRound.player || $attempt < 1}
+                        onclick={redoAttempt}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" d="M22 3H7c-.69 0-1.23.35-1.59.88L0 12l5.41 8.11c.36.53.9.89 1.59.89h15a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2m-3 12.59L17.59 17L14 13.41L10.41 17L9 15.59L12.59 12L9 8.41L10.41 7L14 10.59L17.59 7L19 8.41L15.41 12"/></svg>
+                        <span class="line"></span>
+                    </button>
+                </div>
+            </div>
+
+            <hr>
+            
+            <div class="flow-row -center">
+                <button class="btn btn-outline-secondary" onclick={() => ctrl.close('cancel')} disabled={!$activeRound.player}>Storno</button>
+                <button class="btn btn-outline-primary" onclick={() => ctrl.confirm($activeRound)} disabled={!$roundComplete}>Potvrdit</button>
+                <button class="btn btn-outline-info" onclick={redoRound} disabled={!$activeRound.player || $attempt < 1}>Opravit kolo</button>
+            </div>
+        </div>
+    </div>
+    {/snippet}
+</Dialog>
 
 <style lang="scss">
     .scores {
@@ -280,6 +286,9 @@
             background-color: var(--color-bg-1);
             background-size: 100vw 100vh;
             background-image: radial-gradient(50% 50% at 50% 50%, rgba(255, 255, 255, 0.75) 0%, rgba(255, 255, 255, 0) 100%), linear-gradient(180deg, var(--color-bg-0) 0%, var(--color-bg-1) 15%, var(--color-bg-2) 50%);
+        }
+        .actions {
+            grid-column: 1 / span calc(1 + var(--players));
         }
 
         .round-points {

@@ -1,5 +1,9 @@
-@import "./flow";
+@use "reset.css/reset.css";
+@use "./bootstrap";
 
-@import "./block/badge";
-@import "./block/button";
-@import "./block/tile-list";
+@use "./theme";
+@use "./flow";
+
+@use "./block/badge";
+@use "./block/button";
+@use "./block/tile-list";
