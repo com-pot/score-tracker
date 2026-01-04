@@ -1,10 +1,16 @@
-<script>
+<script lang="ts">
     import Header from './Header.svelte';
     import { onMount } from 'svelte';
     import '../styles/score-tracker.scss';
     import app from '$lib/app';
+    import { createI18nTranslator, setI18n, type I18nCore } from '$lib/I18n';
 
     let { children } = $props();
+
+    const i18nCore: I18nCore = $state({
+        locale: 'cs',
+    });
+    const i18n = setI18n(createI18nTranslator(i18nCore));
 
     onMount(async () => {
         await import ("bootstrap/dist/js/bootstrap.js");

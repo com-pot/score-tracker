@@ -10,5 +10,13 @@ export default defineConfig({
 	},
 	test: {
 		include: ['src/**/*.{test,spec}.{js,ts}']
-	}
+	},
+	css: {
+		preprocessorOptions: {
+			scss: {
+				// Silence bootstrap 5.3 warnings
+				quietDeps: true,
+			},
+		}
+	},
 });

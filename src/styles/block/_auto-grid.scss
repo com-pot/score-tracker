@@ -1,0 +1,12 @@
+.auto-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+
+    &.row-compact {
+        row-gap: 0.5rem;
+    }
+    &.col-compact {
+        column-gap: 0.5rem;
+    }
+}

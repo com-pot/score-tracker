@@ -1,24 +1,47 @@
-<script>
-    import { useGame } from "$lib/score/trackingStore";
-    import { defaultGameStorage } from "$lib/games";
+<script lang="ts">
+    import { getContestBundle } from "$lib/contests";
+    import type { ShootingGameState, ShootingParameters } from "$lib/contests/shooting";
+    import { ShootingGame } from "$lib/contests/shooting.svelte";
+    import { useGameStorage } from "$lib/game.svelte";
+    import { getI18n } from "$lib/I18n";
+    import type { PageProps } from "./$types";
 
-    /** @type {import('./$types').PageData} */
-    export let data;
+    const i18n = getI18n();
 
-    const game = useGame(data.game.name, defaultGameStorage);
-    const {playerStandings, standingPedestals} = game
+    const  {
+        data,
+    }: PageProps = $props();
 
-    $: displayPedestals = $standingPedestals.slice(0, 3)
+    const gameStorage = useGameStorage(data.storageRef)
+    const gameSpecRaw = $derived(await gameStorage.load(data.gameRef.name))
+    const bundle = $derived(await getContestBundle(gameSpecRaw))
+    const gameSpec = $derived(await (async () => bundle.sanitizeGameSpec(gameSpecRaw))())
+    
+    const game = new ShootingGame(data.gameRef.name, gameSpec.rules as ShootingParameters, {
+        initialState: gameSpec?.state as ShootingGameState,
+        onChange(state) {
+            if (!gameSpec?.name) return
+
+            gameStorage.save(gameSpec.name, {
+                name: gameSpec.name,
+                contest: gameSpec.contest,
+                rules: gameSpec.rules,
+                state: state,
+            })
+        },
+    })
+
+    const displayPedestals = $derived(game.standingPedestals.slice(0, 3))
 </script>
 
-<h1>Výsledky: {data.game.name}</h1>
+<h1>Výsledky: {game.name}</h1>
 
 <div class="pedestals">
     {#each displayPedestals as pedestal}
     <div class="pedestal" data-position="{pedestal.position}" style="--position: {pedestal.position}">
         <div class="players">
             {#each pedestal.standings as standing}
-                <div class="player">{standing.player}</div>
+                <div class="player">{i18n.t(standing.player.name)}</div>
             {/each}
         </div>
         <div class="box">
@@ -41,17 +64,17 @@
         </tr>
     </thead>
     <tbody>
-        {#each $playerStandings as standing, i}
+        {#each game.playerStandings as standing (standing.player.id)}
             <tr>
                 <td data-name="position">{standing.position}</td>
-                <td data-name="player">{standing.player}</td>
+                <td data-name="player">{i18n.t(standing.player.name)}</td>
                 <td data-name="points">{standing.points}</td>
             </tr>
         {/each}
     </tbody>
 </table>
 
-<a href="/game/{data.game.name}" class="btn btn-link">Zpět do hry</a>
+<a href="/game/{game.name}" class="btn btn-link">Zpět do hry</a>
 
 <style lang="scss">
 .pedestal-spacer {

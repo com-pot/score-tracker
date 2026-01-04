@@ -1,24 +1,64 @@
 <script lang="ts">
-    import { onDestroy, onMount } from "svelte";
-    import { derived, get, writable } from "svelte/store";
+    import { onMount } from "svelte";
     import AttemptsIndicator from "$lib/components/AttemptsIndicator.svelte";
-    import { useActiveRound, useGame } from "$lib/score/trackingStore";
-    import { defaultGameStorage } from "$lib/games";
+    import { useGameStorage } from "$lib/game.svelte";
     import { goto } from "$app/navigation";
     import Dialog from "$lib/components/Dialog.svelte";
+    import type { PageProps } from "./$types";
+    import { ShootingGame, ShootingRound } from "$lib/contests/shooting.svelte";
+    import { getContestBundle } from "$lib/contests";
+    import type { ShootingGameState, ShootingParameters } from "$lib/contests/shooting";
+    import { getI18n } from "$lib/I18n";
+    import { NewPlayer } from "$lib/contests/_player.svelte";
+    
+    const i18n = getI18n()
 
     const  {
-        data
-    }: {
-        data: import('./$types').PageData,
-    } = $props();
+        data,
+    }: PageProps = $props();
 
-    const game = useGame(data.game.name, defaultGameStorage);
-    const gameData = game.gameData;
-    const playerScores = game.playerScores;
+    const gameStorage = useGameStorage(data.storageRef)
+    const gameSpecRaw = $derived(await gameStorage.load(data.gameRef.name))
+    const bundle = $derived(await getContestBundle(gameSpecRaw))
+    const gameSpec = $derived(await (async () => bundle.sanitizeGameSpec(gameSpecRaw))())
+    
+    const game = new ShootingGame(data.gameRef.name, gameSpec.rules as ShootingParameters, {
+        initialState: gameSpec?.state as ShootingGameState,
+        onChange(state) {
+            if (!gameSpec?.name) return
 
-    const visibleRounds = derived([game.currentRound, game.targetRound], ([round, targetRound]) => {
-        if (targetRound > round) round = targetRound
+            gameStorage.save(gameSpec.name, {
+                name: gameSpec.name,
+                contest: gameSpec.contest,
+                rules: gameSpec.rules,
+                state: state,
+            })
+        },
+    })
+
+    let dialog = $state<ReturnType<typeof Dialog>|null>(null)
+    const activeRound = new ShootingRound({
+        get game() { return game },
+        onSelect(data) {
+            if (!data) {
+                dialog?.ctrl.isOpen && dialog?.ctrl.close("clearSelection")
+                return
+            }
+
+            dialog?.ctrl.open()
+                .then((result) => {
+                    console.log("dialog done", result)
+                    game.putScoreObj(result as any)
+                })
+                .finally(() => {
+                    activeRound.reset()
+                })
+        },
+    });
+    const visibleRounds = $derived.by(() => {
+        let round = activeRound.data?.round || 0;
+        if (game.targetRound > round) round = game.targetRound
+
         let rounds = [];
         for (let i = 1; i <= round; i++) {
             rounds.push(i);
@@ -26,81 +66,14 @@
         return rounds;
     });
 
-    const attempt = writable(0)
-    const roundComplete = derived([attempt], ([attempt]) => attempt >= game.rules.attempts)
-    const attemptCtrl = {
-        mark(points: number) {
-            if (!$activeRound.player) {
-                console.warn("No active round");
-                return
-            }
-            const n = get(attempt)
-            $activeRound.attempts[n] = points
-            if (n < game.rules.attempts) {
-                attempt.set(n + 1)
-            }
-        }
-    }
+    const newPlayer = new NewPlayer({
+        get players() { return game.players },
+    })
 
-    let dialog = $state<ReturnType<typeof Dialog>|null>(null)
-    const activeRound = useActiveRound(game.rules);
-    function select(player: string, round: number) {
-        if ($activeRound.player && $attempt) {
-            console.warn("active score already selected");
-            return
-        }
-
-        const data = get(gameData);
-        let score = data.scores.find(
-            (score) => score.player === player && score.round === round
-        );
-        if (!score) {
-            score = { player, round, attempts: Array.from({length: game.rules.attempts}).map(() => null) };
-        } else {
-            score = { ...score, attempts: score.attempts.slice() };
-        }
-        activeRound.set(score);
-        let setAttempts = score.attempts.findLastIndex((points) => points !== null) + 1
-        
-        attempt.set(setAttempts)
-        console.log(dialog)
-        dialog?.ctrl.open()
-            .then((result) => {
-                console.log("dialog done", result)
-                game.putScoreObj(result as any)
-            })
-            .finally(() => {
-                clearSelection()
-            })
-    }
-    function clearSelection() {
-        activeRound.reset()
-        attempt.set(0)
-        dialog?.ctrl.isOpen && dialog?.ctrl.close("clearSelection")
-    }
-
-    function redoAttempt() {
-        attempt.update((num) => Math.max(0, num - 1))
-        $activeRound.attempts[$attempt] = null
-    }
-    function redoRound() {
-        attempt.set(0)
-    }
-
-    let newPlayerName = writable("");
-    let newPlayerNameAvailable = derived(
-        [game.gameData, newPlayerName],
-        ([gameData, name]) => {
-            if (!name) return false;
-            return !gameData.players.find((p) => p.name === name);
-        }
-    );
     function addPlayer() {
-        if (!$newPlayerNameAvailable) return;
+        if (!newPlayer.nameAvailable) return;
 
-        const name = get(newPlayerName);
-        game.addPlayer({ name });
-        newPlayerName.set("")
+        game.addPlayer(newPlayer.flush());
     }
 
     function storeRoundInfoToUrl(player: string, round: number) {
@@ -116,78 +89,76 @@
             goto(url, {replaceState: true, noScroll: true})
     }
 
-    const unsubscribers: import('svelte/store').Unsubscriber[] = []
     onMount(() => {
+        activeRound.reset()
+
         const loc = new URL(window.location.toString())
         const playerName = loc.searchParams.get("player")
         const round = Number(loc.searchParams.get("round"))
 
-        const data = get(gameData);
-        const player = data.players.find((player) => player.name === playerName);
-        const currentRound = get(game.currentRound)
+        const player = game.players.find((player) => player.name === playerName);
+        const currentRound = game.currentRound
         if (!player || round > currentRound) {
             storeRoundInfoToUrl("", 0)
         } else {
-            select(player.name, round);
+            activeRound.select(player, round);
         }
         
-
         let first = true
-        unsubscribers.push(activeRound.subscribe((round) => {
-            if (first) {
-                first = false;
-                return;
+        $effect(() => {
+            const round = activeRound.data
+            if (round) {
+                storeRoundInfoToUrl(round.player, round.round)
+            } else {
+                storeRoundInfoToUrl("", 0)
             }
-            storeRoundInfoToUrl(round.player, round.round)
-        }))
-        clearSelection()
+        })
     });
-    onDestroy(() => unsubscribers.forEach((unsubscribe) => unsubscribe()))
 
 </script>
 
 <section>
-    <h1>Hra: {data.game.name}</h1>
+    <h1>Hra: {game.name}</h1>
     <div class="subtitle">
-        <a href="/game/{data.game.name}/results" class="btn btn-link">Výsledky</a>
+        <a href="/game/{game.name}/results" class="btn btn-link">Výsledky</a>
     </div>
     <form class="players" onsubmit={(e) => (e.preventDefault(), addPlayer())}>
         <span>Přidat hráče</span>
         <div class="input-group mb-3">
             <input class="form-control" name="newPlayerName"
                 type="text"
-                bind:value={$newPlayerName}
+                bind:value={newPlayer.name}
             >
             <button class="btn btn-outline-primary"
-                disabled="{!$newPlayerNameAvailable}"
+                disabled="{!newPlayer.nameAvailable}"
             >+</button>
         </div>
     </form>
 
     <hr />
 
-    <div class="scores" style={`--players: ${$gameData.players.length};`}>
+    <div class="scores" style={`--players: ${game.players.length};`}>
         <div class="head" data-name="round-num">Kolo</div>
-        {#each Object.entries($playerScores) as [player, { points }]}
+        {#each Object.entries(game.playerScores) as [player, { points }]}
             <div class="head" data-name="player">
                 <span data-name="name">{player}</span>
             </div>
         {/each}
 
-        {#each $visibleRounds as round}
+        {#each visibleRounds as round (round)}
             <div data-name="round-num" data-round={round}>{round}</div>
-            {#each $gameData.players as player}
+            {#each game.players as player (player.id)}
                 <div class={[
                     "round-points",
-                    round === $activeRound.round && "current-round",
-                    player.name === $activeRound.player && "current-player",
+                    round === activeRound.data?.round && "current-round",
+                    player.name === activeRound.data?.player && "current-player",
                     ].join(' ')}
                     data-round={round} data-player={player.name}
                     role="button" tabindex={-1}
-                    onclick={() => select(player.name, round)}
-                    onkeydown={(e) => e.key === 'Enter' && select(player.name, round)}
+                    onclick={() => activeRound.select(player, round)}
+                    onkeydown={(e) => e.key === 'Enter' && activeRound.select(player, round)}
                 >
-                    <AttemptsIndicator attemptPoints={$playerScores[player.name]?.points.roundPoints[round - 1]}/>
+                    <AttemptsIndicator attemptPoints={game.playerScores[player.id]?.points.roundPoints[round - 1]}/>
                 </div>
             {/each}
         {/each}
@@ -197,7 +168,7 @@
 
         <div class="head foot">Celkem</div>
 
-        {#each Object.entries($playerScores) as [player, { points }]}
+        {#each Object.values(game.playerScores) as { points }}
             <div class="foot" data-name="player">
                 <span data-name="total-points">{points.total}</span>
             </div>
@@ -205,7 +176,7 @@
     </div>
     
     <div class="grid-stack round-controls">
-        <div class="card round-inactive" aria-current="{!$activeRound.round ? 'step' : 'false'}">
+        <div class="card round-inactive" aria-current="{!activeRound.data?.round ? 'step' : 'false'}">
         </div>
     </div>
 </section>
@@ -217,26 +188,26 @@
             <div class="flow-row -center">
                 <div class="badge-value" data-name="round">
                     <div class="caption">Kolo</div>
-                    <div class="value">{$activeRound.round}</div>
+                    <div class="value">{activeRound.data?.round}</div>
                 </div>
                 <div class="badge-value" data-name="player">
                     <div class="caption">Hráč</div>
-                    <div class="value">{$activeRound.player}</div>
+                    <div class="value">{activeRound.data?.player}</div>
                 </div>
             </div>
 
             <div class="attempt">
-                <AttemptsIndicator attemptPoints={$activeRound.attempts} highlight={$attempt}/>
+                <AttemptsIndicator attemptPoints={activeRound.data?.attempts || []} highlight={activeRound.attempt}/>
                 <div class="options">
-                    {#each game.rules.options as opt}
+                    {#each game.rules.options as opt (opt.value)}
                     <button class="btn btn-outline-primary"
-                        onclick={() => attemptCtrl.mark(opt.value) }
-                        disabled={$roundComplete || !$activeRound.player}
-                    >{opt.label || opt.value}</button>
+                        onclick={() => activeRound.mark(opt.value) }
+                        disabled={activeRound.isComplete || !activeRound.data?.player}
+                    >{opt.label && i18n.t(opt.label) || opt.value}</button>
                     {/each}
                     <button class="btn -icon btn-outline-info" aria-label="Opravit"
-                        disabled={!$activeRound.player || $attempt < 1}
-                        onclick={redoAttempt}
+                        disabled={!activeRound.data?.player || activeRound.attempt < 1}
+                        onclick={() => activeRound.redoAttempt()}
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" d="M22 3H7c-.69 0-1.23.35-1.59.88L0 12l5.41 8.11c.36.53.9.89 1.59.89h15a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2m-3 12.59L17.59 17L14 13.41L10.41 17L9 15.59L12.59 12L9 8.41L10.41 7L14 10.59L17.59 7L19 8.41L15.41 12"/></svg>
                         <span class="line"></span>
@@ -247,9 +218,9 @@
             <hr>
             
             <div class="flow-row -center">
-                <button class="btn btn-outline-secondary" onclick={() => ctrl.close('cancel')} disabled={!$activeRound.player}>Storno</button>
-                <button class="btn btn-outline-primary" onclick={() => ctrl.confirm($activeRound)} disabled={!$roundComplete}>Potvrdit</button>
-                <button class="btn btn-outline-info" onclick={redoRound} disabled={!$activeRound.player || $attempt < 1}>Opravit kolo</button>
+                <button class="btn btn-outline-secondary" onclick={() => ctrl.close('cancel')} disabled={!activeRound.data?.player}>Storno</button>
+                <button class="btn btn-outline-primary" onclick={() => ctrl.confirm(activeRound.data)} disabled={!activeRound.isComplete}>Potvrdit</button>
+                <button class="btn btn-outline-info" onclick={() => activeRound.redoRound()} disabled={!activeRound.data?.player || activeRound.attempt < 1}>Opravit kolo</button>
             </div>
         </div>
     </div>

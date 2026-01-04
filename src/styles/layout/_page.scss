@@ -1,0 +1,9 @@
+h1.app-name {
+    font-size: 4rem;
+}
+
+.heading {
+    > :is(h2, h3, h4, h5, h6) {
+        display: inline;
+    }
+}

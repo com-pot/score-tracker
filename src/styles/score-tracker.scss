@@ -1,9 +1,12 @@
-@use "reset.css/reset.css";
+@use "modern-normalize/modern-normalize.css";
 @use "./bootstrap";
 
 @use "./theme";
 @use "./flow";
 
+@use "./layout/page";
+
+@use "./block/auto-grid";
 @use "./block/badge";
 @use "./block/button";
 @use "./block/tile-list";

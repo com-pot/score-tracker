@@ -1,0 +1,33 @@
+.card:has(> .card-input) {
+    display: flex;
+    flex-direction: row;
+
+    .card-input {
+        padding: var(--bs-card-spacer-y) calc(var(--bs-card-spacer-x) * 0.5);
+        display: grid;
+        place-content: center;
+        border-inline-end: 1px solid var(--bs-card-border-color);
+    }
+    .card-body {
+        padding-inline-start: calc(var(--bs-card-spacer-x) * 0.5);
+    }
+
+    > .card-input input {
+        accent-color: var(--col-accent, var(--bs-primary));
+    }
+
+    &:has(>.card-input input:checked) {
+        border-color: var(--col-accent, var(--bs-primary));
+    }
+    &:has(>.card-input input:disabled) {
+        cursor: not-allowed;
+        .card-body {
+            color: var(--bs-border-color-translucent);
+        }
+    }
+}
+
+.card-sm {
+    --bs-card-spacer-x: 1rem;
+    --bs-card-spacer-y: 0.5rem;
+}
